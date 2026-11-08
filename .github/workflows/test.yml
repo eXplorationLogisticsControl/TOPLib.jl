@@ -31,6 +31,13 @@ jobs:
           version: ${{ matrix.julia-version }}
           arch: ${{ matrix.julia-arch }}
       - uses: julia-actions/cache@v2
+      # NLPInterface is not registered. Julia 1.10 (lts) ignores a Project.toml
+      # [sources] entry, so the dependency has to be added from git before resolve.
+      - name: Install unregistered dependencies
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using Pkg
+          Pkg.add(url="https://github.com/Yuricst/NLPInterface.jl.git")
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         # with:
