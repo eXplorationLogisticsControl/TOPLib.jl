@@ -6,30 +6,43 @@ const DEFAULT_STATE_BOUND = 10.0
 
 
 """
-    ForwardShootingProblem(dynamics, times, objective_type, x_initial, x_final; kwargs...)
+    ForwardShootingProblem(dynamics, times, objective, x_initial, x_final; kwargs...)
 
-Fixed-time multiple-shooting problem.
+Multiple-shooting problem on a fixed node grid.
 
 `times` has one entry per node (`N = length(times)`). A missing endpoint
-(`nothing`) leaves that boundary free. For `:fuel` the control is the
-4-vector `[ux, uy, uz, u]`: the equations of motion must apply the thrust
-`u * [ux, uy, uz]`, the throttle satisfies `u ∈ [0, umax]`, and the direction
-satisfies `ux^2 + uy^2 + uz^2 ≤ 1`.
+(`nothing`) leaves that boundary free. `x_initial_idx` and `x_final_idx` fix
+only those state components; omit them to fix the whole vector.
 
-Optional `ceq_path(x_k, u_k)` and `cineq_path(x_k, u_k)` are equality and
-inequality path constraints on each of the `N - 1` segments. Each returns a
-vector of fixed length. Inequalities are feasible when every entry is `≤ 0`.
+`objective` is `:fuel` or a function `(x, u) -> Real`. For `:fuel` the cost is
+`sum(u[4, :])`. Pass `umax` only for the historical 4-vector control
+`[ux, uy, uz, u]`, with throttle `u ∈ [0, umax]` and box bounds `±1` on the
+direction. Otherwise pass `u_lb` and `u_ub`, each of length `nu`.
+
+With `direction_constraint` (the default), every segment satisfies
+`ux^2 + uy^2 + uz^2 ≤ 1`. This needs `nu ≥ 3`. `:fuel` needs `nu ≥ 4`.
+
+`ceq_path(x_k, u_k)` and `cineq_path(x_k, u_k)` are per-segment constraints.
+Each returns a vector of fixed length. `ceq(x, u)` and `cineq(x, u)` are
+called once on the full `nx × N` state and `nu × (N - 1)` control. Inequalities
+are feasible when every entry is `≤ 0`.
 """
 mutable struct ForwardShootingProblem
     dynamics::ContinuousControlDynamics
     times::Vector{Float64}
-    objective_type::Symbol
+    objective::Union{Symbol,Function}
     N::Int
-    umax::Float64
+    u_lb::Vector{Float64}
+    u_ub::Vector{Float64}
+    direction_constraint::Bool
     x_initial::Union{Vector{Float64},Nothing}
     x_final::Union{Vector{Float64},Nothing}
+    x_initial_idx::Union{Vector{Int},Nothing}
+    x_final_idx::Union{Vector{Int},Nothing}
     ceq_path::Union{Function,Nothing}
     cineq_path::Union{Function,Nothing}
+    ceq::Union{Function,Nothing}
+    cineq::Union{Function,Nothing}
     ode_method
     ode_reltol::Float64
     ode_abstol::Float64
@@ -37,21 +50,32 @@ mutable struct ForwardShootingProblem
     function ForwardShootingProblem(
         dynamics::ContinuousControlDynamics,
         times::AbstractVector,
-        objective_type::Symbol,
+        objective::Union{Symbol,Function},
         x_initial::Union{AbstractVector,Nothing},
         x_final::Union{AbstractVector,Nothing};
-        umax::Real,
+        umax::Union{Real,Nothing}=nothing,
+        u_lb::Union{AbstractVector,Nothing}=nothing,
+        u_ub::Union{AbstractVector,Nothing}=nothing,
+        x_initial_idx::Union{AbstractVector,Nothing}=nothing,
+        x_final_idx::Union{AbstractVector,Nothing}=nothing,
+        direction_constraint::Bool=true,
         ceq_path::Union{Function,Nothing}=nothing,
         cineq_path::Union{Function,Nothing}=nothing,
+        ceq::Union{Function,Nothing}=nothing,
+        cineq::Union{Function,Nothing}=nothing,
         ode_method=OrdinaryDiffEq.Tsit5(),
         ode_reltol::Real=1e-12,
         ode_abstol::Real=1e-12,
     )
-        objective_type == :fuel ||
-            error("Objective type $objective_type not supported")
-        dynamics.nu == 4 ||
-            throw(ArgumentError("minimum-fuel control must have nu = 4, got $(dynamics.nu)"))
-        umax >= 0 || throw(ArgumentError("umax must be non-negative"))
+        if objective isa Symbol && objective != :fuel
+            error("Objective type $objective not supported")
+        end
+        if objective === :fuel && dynamics.nu < 4
+            throw(ArgumentError("minimum-fuel control must have nu >= 4, got $(dynamics.nu)"))
+        end
+        if direction_constraint && dynamics.nu < 3
+            throw(ArgumentError("direction constraint needs nu >= 3, got $(dynamics.nu)"))
+        end
         ode_reltol > 0 || throw(ArgumentError("ode_reltol must be positive"))
         ode_abstol > 0 || throw(ArgumentError("ode_abstol must be positive"))
 
@@ -60,18 +84,25 @@ mutable struct ForwardShootingProblem
         N >= 2 || throw(ArgumentError("times must contain at least two nodes"))
         all(diff(times) .> 0) || throw(ArgumentError("times must be strictly increasing"))
 
-        x_initial = _boundary_vector(x_initial, dynamics.nx, "x_initial")
-        x_final = _boundary_vector(x_final, dynamics.nx, "x_final")
+        u_lb, u_ub = _control_bounds(dynamics.nu, umax, u_lb, u_ub)
+        x_initial, x_initial_idx = _boundary_pair(x_initial, x_initial_idx, dynamics.nx, "x_initial")
+        x_final, x_final_idx = _boundary_pair(x_final, x_final_idx, dynamics.nx, "x_final")
         return new(
             dynamics,
             times,
-            objective_type,
+            objective,
             N,
-            Float64(umax),
+            u_lb,
+            u_ub,
+            direction_constraint,
             x_initial,
             x_final,
+            x_initial_idx,
+            x_final_idx,
             ceq_path,
             cineq_path,
+            ceq,
+            cineq,
             ode_method,
             Float64(ode_reltol),
             Float64(ode_abstol),
@@ -80,43 +111,114 @@ mutable struct ForwardShootingProblem
 end
 
 
-function _boundary_vector(x::Nothing, ::Integer, ::AbstractString)
-    return nothing
-end
-function _boundary_vector(x::AbstractVector, nx::Integer, name::AbstractString)
-    if length(x) != nx
-        throw(ArgumentError("$name must have length nx=$nx"))
+"""Control box from `umax` (nu = 4 only) or from an explicit pair of vectors."""
+function _control_bounds(nu::Integer, umax, u_lb, u_ub)
+    has_box = u_lb !== nothing || u_ub !== nothing
+    if has_box && umax !== nothing
+        throw(ArgumentError("pass either umax or u_lb and u_ub, not both"))
     end
-    return collect(Float64, x)
+    if has_box
+        if u_lb === nothing || u_ub === nothing
+            throw(ArgumentError("u_lb and u_ub must be provided together"))
+        end
+        lb = collect(Float64, u_lb)
+        ub = collect(Float64, u_ub)
+        if length(lb) != nu || length(ub) != nu
+            throw(ArgumentError("u_lb and u_ub must have length nu=$nu"))
+        end
+        if any(lb .> ub)
+            throw(ArgumentError("u_lb must be componentwise <= u_ub"))
+        end
+        return lb, ub
+    end
+    if umax === nothing
+        throw(ArgumentError("pass umax, or u_lb and u_ub"))
+    end
+    umax >= 0 || throw(ArgumentError("umax must be non-negative"))
+    if nu != 4
+        throw(ArgumentError("umax applies only when nu = 4; pass u_lb and u_ub for nu = $nu"))
+    end
+    return [-1.0, -1.0, -1.0, 0.0], [1.0, 1.0, 1.0, Float64(umax)]
+end
+
+
+"""Target values and the state indices they constrain. `nothing` fixes every component."""
+function _boundary_pair(x::Nothing, idx, ::Integer, name::AbstractString)
+    if idx !== nothing
+        throw(ArgumentError("$(name)_idx requires $name"))
+    end
+    return nothing, nothing
+end
+function _boundary_pair(x::AbstractVector, idx, nx::Integer, name::AbstractString)
+    values = collect(Float64, x)
+    if idx === nothing
+        if length(values) != nx
+            throw(ArgumentError("$name must have length nx=$nx"))
+        end
+        return values, nothing
+    end
+    if !all(i -> i isa Integer, idx)
+        throw(ArgumentError("$(name)_idx must contain integers"))
+    end
+    indices = collect(Int, idx)
+    if length(indices) != length(values)
+        throw(ArgumentError("$(name)_idx must have the same length as $name"))
+    end
+    if isempty(indices) || !allunique(indices) || any(i -> i < 1 || i > nx, indices)
+        throw(ArgumentError("$(name)_idx must be unique indices in 1:$nx"))
+    end
+    return values, indices
+end
+
+
+"""Number of equality rows contributed by one boundary target."""
+function _boundary_length(target, idx)
+    target === nothing && return 0
+    return idx === nothing ? length(target) : length(idx)
 end
 
 
 """
     get_boundary_conditions(prob, x1, xN) -> ceq
 
-Flattened boundary equalities `x1 - x_initial` and then `xN - x_final`.
-An endpoint that is `nothing` is omitted.
+Flattened boundary equalities. A full target contributes `x - target`.
+An index vector contributes `x[idx] - target`. A missing endpoint is omitted.
 """
 function get_boundary_conditions(prob::ForwardShootingProblem, x1, xN)
     T = promote_type(eltype(x1), eltype(xN))
     ceq = T[]
-    if prob.x_initial isa AbstractVector
-        append!(ceq, x1 .- prob.x_initial)
-    end
-    if prob.x_final isa AbstractVector
-        append!(ceq, xN .- prob.x_final)
-    end
+    _append_boundary!(ceq, x1, prob.x_initial, prob.x_initial_idx)
+    _append_boundary!(ceq, xN, prob.x_final, prob.x_final_idx)
+    return ceq
+end
+
+function _append_boundary!(ceq, ::Any, ::Nothing, ::Nothing)
+    return ceq
+end
+function _append_boundary!(ceq, x, target::AbstractVector, ::Nothing)
+    append!(ceq, x .- target)
+    return ceq
+end
+function _append_boundary!(ceq, x, target::AbstractVector, idx::AbstractVector)
+    append!(ceq, x[idx] .- target)
     return ceq
 end
 
 
-"""Minimum-fuel cost `sum(u[4, :])`, the sum of segment throttles."""
-function get_objective(objective_type::Symbol, x, u)
-    if objective_type == :fuel
+"""Minimum-fuel cost `sum(u[4, :])`, or the value of a user objective `(x, u) -> Real`."""
+function get_objective(objective::Symbol, x, u)
+    if objective == :fuel
         return sum(u[4, :])
     else
-        error("Objective type $objective_type not supported")
+        error("Objective type $objective not supported")
     end
+end
+function get_objective(objective::Function, x, u)
+    value = objective(x, u)
+    if !(value isa Real)
+        throw(ArgumentError("objective must return a real number, got $(typeof(value))"))
+    end
+    return value
 end
 
 
@@ -158,19 +260,42 @@ function path_block_length(fun::Union{Function,Nothing}, x::AbstractMatrix, u::A
 end
 
 
+"""Evaluate a full-trajectory constraint once. The callback receives copies."""
+function trajectory_constraints(fun::Function, x::AbstractMatrix, u::AbstractMatrix)
+    block = fun(collect(x), collect(u))
+    if !(block isa AbstractVector)
+        throw(ArgumentError("trajectory constraints must return an AbstractVector, got $(typeof(block))"))
+    end
+    return block
+end
+
+
+"""Length of a full-trajectory constraint block. `nothing` contributes nothing."""
+function trajectory_block_length(fun::Union{Function,Nothing}, x::AbstractMatrix, u::AbstractMatrix)
+    fun === nothing && return 0
+    return length(trajectory_constraints(fun, x, u))
+end
+
+
 """
 Equality and inequality counts passed to NLPInterface.
 
-Equalities are dynamics defects, then boundary conditions, then `ceq_path`.
-Inequalities are the fuel direction constraints, then `cineq_path`.
+Equalities are dynamics defects, then boundary conditions, then `ceq_path`,
+then `ceq`. Inequalities are the direction constraints, then `cineq_path`,
+then `cineq`.
 """
 function constraint_counts(prob::ForwardShootingProblem, x::AbstractMatrix, u::AbstractMatrix)
     nx = prob.dynamics.nx
     nseg = prob.N - 1
-    n_bc = (prob.x_initial isa AbstractVector ? nx : 0) +
-        (prob.x_final isa AbstractVector ? nx : 0)
-    n_ceq = nx * nseg + n_bc + nseg * path_block_length(prob.ceq_path, x, u)
-    n_cineq = nseg + nseg * path_block_length(prob.cineq_path, x, u)
+    n_bc = _boundary_length(prob.x_initial, prob.x_initial_idx) +
+        _boundary_length(prob.x_final, prob.x_final_idx)
+    n_dir = prob.direction_constraint ? nseg : 0
+    n_ceq = nx * nseg + n_bc +
+        nseg * path_block_length(prob.ceq_path, x, u) +
+        trajectory_block_length(prob.ceq, x, u)
+    n_cineq = n_dir +
+        nseg * path_block_length(prob.cineq_path, x, u) +
+        trajectory_block_length(prob.cineq, x, u)
     return n_ceq, n_cineq
 end
 
@@ -181,7 +306,9 @@ end
 `fitness(z) -> (obj, ceq, cineq)` for NLPInterface.
 
 `z` is copied on entry because the solver reuses the input array. `ceq` is
-`[vec(defects); boundary; ceq_path]` and `cineq` is `[direction; cineq_path]`.
+`[vec(defects); boundary; ceq_path; ceq]` and `cineq` is
+`[direction; cineq_path; cineq]`. The direction block is omitted when
+`direction_constraint` is false.
 """
 function get_fitness(prob::ForwardShootingProblem)
     nx = prob.dynamics.nx
@@ -190,7 +317,7 @@ function get_fitness(prob::ForwardShootingProblem)
     function fitness(z)
         zc = copy(z)
         x, u = unpack_variables(zc, nx, nu, N)
-        obj = get_objective(prob.objective_type, x, u)
+        obj = get_objective(prob.objective, x, u)
         defects = shooting_defects(
             prob.dynamics,
             prob.times,
@@ -204,9 +331,15 @@ function get_fitness(prob::ForwardShootingProblem)
         if prob.ceq_path !== nothing
             ceq = vcat(ceq, path_constraints(prob.ceq_path, x, u))
         end
-        cineq = fuel_direction_inequalities(u)
+        if prob.ceq !== nothing
+            ceq = vcat(ceq, trajectory_constraints(prob.ceq, x, u))
+        end
+        cineq = prob.direction_constraint ? fuel_direction_inequalities(u) : similar(u, 0)
         if prob.cineq_path !== nothing
             cineq = vcat(cineq, path_constraints(prob.cineq_path, x, u))
+        end
+        if prob.cineq !== nothing
+            cineq = vcat(cineq, trajectory_constraints(prob.cineq, x, u))
         end
         return obj, ceq, cineq
     end
@@ -231,7 +364,7 @@ end
 Variable bounds on the stacked decision vector.
 
 Every state component uses `x_lb` / `x_ub` (scalars apply to all components).
-Direction components lie in `[-1, 1]` and the throttle lies in `[0, umax]`.
+Each segment's control is boxed by `u_lb` / `u_ub`.
 """
 function decision_bounds(prob::ForwardShootingProblem, x_lb, x_ub)
     nx = prob.dynamics.nx
@@ -254,10 +387,8 @@ function decision_bounds(prob::ForwardShootingProblem, x_lb, x_ub)
     u_offset = nx * N
     for k in 1:nseg
         i1 = u_offset + (k - 1) * nu + 1
-        z_lb[i1:i1+2] .= -1.0
-        z_ub[i1:i1+2] .= 1.0
-        z_lb[i1+3] = 0.0
-        z_ub[i1+3] = prob.umax
+        z_lb[i1:i1+nu-1] .= prob.u_lb
+        z_ub[i1:i1+nu-1] .= prob.u_ub
     end
     return z_lb, z_ub
 end
