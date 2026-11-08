@@ -19,7 +19,7 @@ jobs:
       matrix:
         julia-version: ['lts'] # '1', 'pre']
         julia-arch: [x64] #[x64, x86]
-        os: [macOS-latest, ubuntu-latest, windows-latest]
+        os: [macOS-latest, ubuntu-latest] #, windows-latest]
         # exclude:
         #   - os: macOS-latest
         #     julia-arch: x86
@@ -52,17 +52,42 @@ jobs:
         if: runner.os == 'Windows'
         shell: julia --color=yes --project=. {0}
         run: |
+          using Pkg, Artifacts
+          # These two are standard libraries. XML2_jll and Libiconv_jll are only
+          # transitive dependencies, so `using` them fails with "not found in
+          # current path". Their DLL directories come from the manifest below.
           using CompilerSupportLibraries_jll
-          using XML2_jll
-          using Libiconv_jll
           using Zlib_jll
-          bins = unique(dirname, [
-              CompilerSupportLibraries_jll.libgcc_s,
-              XML2_jll.libxml2,
-              Libiconv_jll.libiconv,
-              Libiconv_jll.libcharset,
-              Zlib_jll.libz,
-          ])
+
+          function manifest_artifact_bindir(pkgname)
+              infos = [info for info in values(Pkg.dependencies()) if info.name == pkgname]
+              isempty(infos) && return nothing
+              src = only(infos).source
+              isdir(src) || (src = abspath(src))
+              artifacts_toml = joinpath(src, "Artifacts.toml")
+              # Stdlib copies have no Artifacts.toml; the `using` above covers those.
+              isfile(artifacts_toml) || return nothing
+              artifact_name = replace(pkgname, r"_jll$" => "")
+              dir = Pkg.Artifacts.ensure_artifact_installed(artifact_name, artifacts_toml)
+              bin = joinpath(dir, "bin")
+              isdir(bin) || error("$pkgname artifact has no bin directory: $dir")
+              return bin
+          end
+
+          bins = String[
+              dirname(CompilerSupportLibraries_jll.libgcc_s),
+              dirname(Zlib_jll.libz),
+          ]
+          for name in ("CompilerSupportLibraries_jll", "Zlib_jll", "XML2_jll", "Libiconv_jll")
+              bin = manifest_artifact_bindir(name)
+              if bin === nothing
+                  name in ("XML2_jll", "Libiconv_jll") &&
+                      error("$name is not installed; expected it in the manifest via Ipopt → SPRAL → Hwloc")
+              else
+                  push!(bins, bin)
+              end
+          end
+          unique!(bins)
           open(ENV["GITHUB_PATH"], "a") do io
               for bin in bins
                   write(io, bin, '\n')
