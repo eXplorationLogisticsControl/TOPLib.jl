@@ -1,0 +1,99 @@
+name: test
+
+on:
+  push:
+    branches:
+      - master
+      - main
+  pull_request:
+
+# needed to allow julia-actions/cache to delete old caches that it has created
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        julia-version: ['lts'] # '1', 'pre']
+        julia-arch: [x64] #[x64, x86]
+        os: [macOS-latest, ubuntu-latest] #, windows-latest]
+        # exclude:
+        #   - os: macOS-latest
+        #     julia-arch: x86
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: ${{ matrix.julia-version }}
+          arch: ${{ matrix.julia-arch }}
+      - uses: julia-actions/cache@v2
+      # NLPInterface is not registered. Julia 1.10 (lts) ignores a Project.toml
+      # [sources] entry, so the dependency has to be added from git before resolve.
+      # Skip precompilation here: on Windows, Hwloc_jll cannot load until the
+      # MinGW runtime DLLs are on PATH (next step).
+      - name: Install unregistered dependencies
+        env:
+          JULIA_PKG_PRECOMPILE_AUTO: "0"
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using Pkg
+          Pkg.add(url="https://github.com/Yuricst/NLPInterface.jl.git")
+      # libhwloc-15.dll (Hwloc_jll, pulled in by Ipopt → SPRAL) imports
+      # libgcc_s_seh-1.dll and libxml2-16.dll. Those ship in other JLL
+      # artifacts, and Hwloc_jll does not depend on CompilerSupportLibraries_jll.
+      # Windows does not search sibling artifact directories, so LoadLibrary
+      # fails with "The specified module could not be found" and precompilation
+      # of NLPInterface / TOPLib never finishes.
+      - name: Expose JLL runtime DLLs on PATH
+        if: runner.os == 'Windows'
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using Pkg, Artifacts
+          # These two are standard libraries. XML2_jll and Libiconv_jll are only
+          # transitive dependencies, so `using` them fails with "not found in
+          # current path". Their DLL directories come from the manifest below.
+          using CompilerSupportLibraries_jll
+          using Zlib_jll
+
+          function manifest_artifact_bindir(pkgname)
+              infos = [info for info in values(Pkg.dependencies()) if info.name == pkgname]
+              isempty(infos) && return nothing
+              src = only(infos).source
+              isdir(src) || (src = abspath(src))
+              artifacts_toml = joinpath(src, "Artifacts.toml")
+              # Stdlib copies have no Artifacts.toml; the `using` above covers those.
+              isfile(artifacts_toml) || return nothing
+              artifact_name = replace(pkgname, r"_jll$" => "")
+              dir = Pkg.Artifacts.ensure_artifact_installed(artifact_name, artifacts_toml)
+              bin = joinpath(dir, "bin")
+              isdir(bin) || error("$pkgname artifact has no bin directory: $dir")
+              return bin
+          end
+
+          bins = String[
+              dirname(CompilerSupportLibraries_jll.libgcc_s),
+              dirname(Zlib_jll.libz),
+          ]
+          for name in ("CompilerSupportLibraries_jll", "Zlib_jll", "XML2_jll", "Libiconv_jll")
+              bin = manifest_artifact_bindir(name)
+              if bin === nothing
+                  name in ("XML2_jll", "Libiconv_jll") &&
+                      error("$name is not installed; expected it in the manifest via Ipopt → SPRAL → Hwloc")
+              else
+                  push!(bins, bin)
+              end
+          end
+          unique!(bins)
+          open(ENV["GITHUB_PATH"], "a") do io
+              for bin in bins
+                  write(io, bin, '\n')
+              end
+          end
+      - uses: julia-actions/julia-buildpkg@v1
+      - uses: julia-actions/julia-runtest@v1
+        # with:
+        #   annotate: true
