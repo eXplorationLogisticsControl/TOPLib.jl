@@ -33,11 +33,41 @@ jobs:
       - uses: julia-actions/cache@v2
       # NLPInterface is not registered. Julia 1.10 (lts) ignores a Project.toml
       # [sources] entry, so the dependency has to be added from git before resolve.
+      # Skip precompilation here: on Windows, Hwloc_jll cannot load until the
+      # MinGW runtime DLLs are on PATH (next step).
       - name: Install unregistered dependencies
+        env:
+          JULIA_PKG_PRECOMPILE_AUTO: "0"
         shell: julia --color=yes --project=. {0}
         run: |
           using Pkg
           Pkg.add(url="https://github.com/Yuricst/NLPInterface.jl.git")
+      # libhwloc-15.dll (Hwloc_jll, pulled in by Ipopt → SPRAL) imports
+      # libgcc_s_seh-1.dll and libxml2-16.dll. Those ship in other JLL
+      # artifacts, and Hwloc_jll does not depend on CompilerSupportLibraries_jll.
+      # Windows does not search sibling artifact directories, so LoadLibrary
+      # fails with "The specified module could not be found" and precompilation
+      # of NLPInterface / TOPLib never finishes.
+      - name: Expose JLL runtime DLLs on PATH
+        if: runner.os == 'Windows'
+        shell: julia --color=yes --project=. {0}
+        run: |
+          using CompilerSupportLibraries_jll
+          using XML2_jll
+          using Libiconv_jll
+          using Zlib_jll
+          bins = unique(dirname, [
+              CompilerSupportLibraries_jll.libgcc_s,
+              XML2_jll.libxml2,
+              Libiconv_jll.libiconv,
+              Libiconv_jll.libcharset,
+              Zlib_jll.libz,
+          ])
+          open(ENV["GITHUB_PATH"], "a") do io
+              for bin in bins
+                  write(io, bin, '\n')
+              end
+          end
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-runtest@v1
         # with:
