@@ -1,5 +1,11 @@
-"""Multiple-shooting minimum-fuel transfer between Earth-Moon LPOs."""
+"""Multiple-shooting minimum-fuel transfer between Earth-Moon LPOs.
 
+Run from this directory so the examples environment is used:
+
+    julia --project=. cr3bp_multipleshooting.jl
+"""
+
+using CairoMakie
 using OrdinaryDiffEq
 using TOPLib: TOPLib, ContinuousControlDynamics, ForwardShootingProblem
 
@@ -105,3 +111,44 @@ defects = TOPLib.shooting_defects(
 println("status       : ", result.status)
 println("objective    : ", result.objective)
 println("max |defect| : ", maximum(abs, defects))
+
+# Propagate each zero-order-hold segment so the plot follows the continuous arcs.
+sols_opt = map(1:(N - 1)) do k
+    solve(
+        ODEProblem(
+            eom!,
+            result.x[:, k],
+            (times[k], times[k + 1]),
+            (; params, u=result.u[:, k]),
+        ),
+        prob.ode_method;
+        reltol=prob.ode_reltol,
+        abstol=prob.ode_abstol,
+        verbose=DEVerbosity(SciMLLogging.None()),
+    )
+end
+
+fig = Figure(size=(1000,700))
+ax3d = Axis3(fig[1,1]; aspect=:data)
+rowsize!(fig.layout, 1, Relative(0.58))
+lines!(ax3d, Array(sol_lpo0)[1, :], Array(sol_lpo0)[2, :], Array(sol_lpo0)[3, :], color=:blue)
+lines!(ax3d, Array(sol_lpof)[1, :], Array(sol_lpof)[2, :], Array(sol_lpof)[3, :], color=:green)
+# Thrusting arcs in red, coast arcs in black.
+arc_colors = [result.u[4, i] > 1e-6 ? :red : :black for i in 1:(N - 1)]
+for (i, sol) in enumerate(sols_opt)
+    traj = Array(sol)
+    lines!(ax3d, traj[1, :], traj[2, :], traj[3, :], color=arc_colors[i])
+end
+
+ax_u = Axis(fig[1,2]; xlabel="Time", ylabel="Control")
+hlines!(ax_u, umax, color=:red, linestyle=:dash)
+for i in 1:3
+    stairs!(ax_u, times, [result.u[4,:]; 0.0] .* [result.u[i,:]; 0.0], label="u[$i]", step=:post, linewidth=1.0)
+end
+stairs!(ax_u, times, [result.u[4,:]; 0.0], label="u[4]", step=:post, linewidth=2.0, color=:black, linestyle=:dash)
+axislegend(ax_u, position=:cc)
+
+plots_dir = joinpath(@__DIR__, "plots")
+mkpath(plots_dir)
+save(joinpath(plots_dir, "cr3bp_traj_multipleshooting.png"), fig; px_per_unit=3)
+println("Saved plot to ", joinpath(plots_dir, "cr3bp_traj_multipleshooting.png"))

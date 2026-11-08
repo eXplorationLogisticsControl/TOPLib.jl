@@ -1,0 +1,9 @@
+[deps]
+CairoMakie = "13f3f980-e62b-5c42-98c6-ff1f3baf88f0"
+NLPInterface = "e604ab98-cb68-4d52-a41a-b2fbd5dba595"
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+TOPLib = "c416ca4d-1522-4547-b800-d3a11860d931"
+
+[sources]
+NLPInterface = {path = "../../NLPInterface.jl"}
+TOPLib = {path = ".."}
