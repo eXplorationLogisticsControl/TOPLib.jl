@@ -5,17 +5,17 @@ Trajectory Optimization via NLP transcriptions
 
 We consider the problem
 
-$$
-\begin{aligned}
+```math
+\begin{align}
     \min_{\boldsymbol{x}_k,\boldsymbol{u}_k} \quad& J(\boldsymbol{x}_k,\boldsymbol{u}_k)
     \\ \text{s.t.} \quad&
-    x_{k+1} = \boldsymbol{x}_k + \int_{t_k}^{t_{k+1}} f(\boldsymbol{x}_k,\boldsymbol{u}_k) \mathrm{d}t \quad& k=1,\ldots,N-1
+    x_{k+1} = \boldsymbol{x}_k + \int_{t_k}^{t_{k+1}} f(\boldsymbol{x}_k,\boldsymbol{u}_k) \mathrm{d}t \quad k=1,\ldots,N-1
     \\&
     \boldsymbol{g}(\boldsymbol{x}_k,\boldsymbol{u}_k) = \boldsymbol{0}
     \\&
     \boldsymbol{h}(\boldsymbol{x}_k,\boldsymbol{u}_k) \leq \boldsymbol{0}
-\end{aligned}
-$$
+\end{align}
+```
 
 
 ### Minimum fuel
