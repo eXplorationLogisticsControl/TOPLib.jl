@@ -13,7 +13,7 @@ Run from the examples environment:
 
 using CairoMakie
 using OrdinaryDiffEq
-using TOPLib: TOPLib, ContinuousControlDynamics, ForwardShootingProblem
+using TOPLib: TOPLib, ContinuousControlDynamics, MultipleShootingForwardProblem
 
 
 struct ControlParams
@@ -99,12 +99,11 @@ for (i, alpha) in enumerate(LinRange(0.0, 1.0, N))
 end
 x0[7, :] .= 1.0
 x0[8, :] = LinRange(0.0, tf_guess, N)
-u0 = zeros(nu, N - 1)
-u0[1, :] .= 1.0
-u0[5, :] .= tf_guess
+u0 = 0.1 * ones(nu, N - 1)              # make control initial guess non-zero
+u0[5, :] .= tf_guess                    # overwrite with TOF initial guess
 
 dynamics = ContinuousControlDynamics(nx, nu, eom!, params)
-prob = ForwardShootingProblem(
+prob = MultipleShootingForwardProblem(
     dynamics,
     times,
     objective,
@@ -118,16 +117,36 @@ prob = ForwardShootingProblem(
 
 x_lb = [-10.0, -10.0, -10.0, -10.0, -10.0, -10.0, 0.2, -1.0]
 x_ub = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 1.5, 10.0]
+
+# options per solver
+solver = :ipopt 
+if solver == :ipopt
+    options = Dict(
+        :tol => 1e-6,                 # bounds on scaled NLP error
+        :constr_viol_tol => 1e-8,
+        :print_level => 5,
+        :max_iter => 500,
+    )
+elseif solver == :snopt
+    options = Dict(
+        :Major_optimality_tolerance => 1e-6,
+        :Major_feasibility_tolerance => 1e-8,
+        :Major_print_level => 1,
+        :Major_iterations_limit => 500,
+    )
+else
+    error("Invalid solver: $solver")
+end
+
+
 result = TOPLib.solve(
     prob;
-    algo=:ipopt,
+    algo=solver,
     x0=x0,
     u0=u0,
     x_lb=x_lb,
     x_ub=x_ub,
-    max_iter=500,
-    tol=1e-6,
-    print_level=5,
+    options...,
 )
 
 defects = TOPLib.shooting_defects(

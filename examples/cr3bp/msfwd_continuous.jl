@@ -7,7 +7,7 @@ Run from this directory so the examples environment is used:
 
 using CairoMakie
 using OrdinaryDiffEq
-using TOPLib: TOPLib, ContinuousControlDynamics, ForwardShootingProblem
+using TOPLib: TOPLib, ContinuousControlDynamics, MultipleShootingForwardProblem
 
 
 # define dynamics
@@ -90,7 +90,7 @@ u0 = zeros(nu, N - 1)
 u0[1, :] .= 1.0
 
 dynamics = ContinuousControlDynamics(nx, nu, eom!, params)
-prob = ForwardShootingProblem(dynamics, times, :fuel, rv0, rvf; umax=umax)
+prob = MultipleShootingForwardProblem(dynamics, times, :fuel, rv0, rvf; umax=umax)
 
 result = TOPLib.solve(
     prob;

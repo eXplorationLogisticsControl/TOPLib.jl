@@ -5,8 +5,9 @@ using NLPInterface
 
 include("continuous_control.jl")
 include("multipleshooting/utils.jl")
-include("multipleshooting/forwardshooting.jl")
+include("impulsive_control.jl")
+include("multipleshooting/msfwd.jl")
 
-export ContinuousControlDynamics, ForwardShootingProblem, solve
+export ContinuousControlDynamics, ImpulsiveControlDynamics, MultipleShootingForwardProblem, solve
 
 end # module TOPLib
