@@ -20,3 +20,7 @@ end
 @testset "Impulsive forward shooting" begin
     include("test_impulsive_msfwd.jl")
 end
+
+@testset "Forward-backward shooting" begin
+    include("test_fwdbck.jl")
+end
