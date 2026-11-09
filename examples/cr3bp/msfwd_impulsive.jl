@@ -14,7 +14,7 @@ Run from this directory so the examples environment is used:
 
 using CairoMakie
 using OrdinaryDiffEq
-using TOPLib: TOPLib, ImpulsiveControlDynamics, MultipleForwardShootingProblem
+using TOPLib: TOPLib, ImpulsiveControlDynamics, MultipleShootingForwardProblem
 
 
 struct ControlParams
@@ -88,20 +88,42 @@ for (i, alpha) in enumerate(alphas)
     x0[:, i] = (1 - alpha) * x_along_lpo0[:, i] + alpha * x_along_lpof[:, i]
 end
 # Unit direction so the direction constraint is not degenerate, throttle still zero.
-u0 = zeros(nu, N)
-u0[1, :] .= 1.0
+u0 = 0.1 * umax * ones(nu, N)   # pass non-zero initial guess
+u0[4,:] .= 0.1 * umax
 
 dynamics = ImpulsiveControlDynamics(nx, nu, eom!, params)
-prob = MultipleForwardShootingProblem(dynamics, times, :fuel, rv0, rvf; umax = umax)
+prob = MultipleShootingForwardProblem(dynamics, times, :fuel, rv0, rvf; umax = umax)
+
+# options per solver
+solver = :snopt 
+if solver == :ipopt
+    options = Dict(
+        :tol => 1e-6,                 # bounds on scaled NLP error
+        :constr_viol_tol => 1e-8,
+        :print_level => 5,
+        :max_iter => 500,
+    )
+elseif solver == :snopt
+    options = Dict(
+        :Major_optimality_tolerance => 1e-6,
+        :Major_feasibility_tolerance => 1e-8,
+        # :Major_step_limit => 0.1,               # effectively a trust-region
+        # :Violation_limit => 1.0,
+        # :Scale_option => 0,                     # no scaling (keep user's scaling)
+        # :Hessian_updates => 20,
+        :Major_print_level => 1,
+        :Major_iterations_limit => 500,
+    )
+else
+    error("Invalid solver: $solver")
+end
 
 result = TOPLib.solve(
     prob;
-    algo = :snopt,
+    algo = solver,
     x0 = x0,
     u0 = u0,
-    max_iter = 500,
-    tol = 1e-6,
-    print_level = 5,
+    options...,
 )
 
 defects = TOPLib.shooting_defects(
@@ -143,7 +165,7 @@ scatter!(ax3d, result.x[1, burn], result.x[2, burn], result.x[3, burn], color = 
 ax_u = Axis(fig[1, 2]; xlabel = "Time", ylabel = "Impulse")
 hlines!(ax_u, umax, color = :red, linestyle = :dash)
 for i in 1:3
-    scatterlines!(ax_u, times, Δv[i, :], label = "Δv[$i]", linewidth = 1.0)
+    stem!(ax_u, times, Δv[i, :], label = "Δv[$i]")
 end
 stem!(ax_u, times, result.u[4, :], label = "throttle", color = :black)
 axislegend(ax_u, position = :cc)

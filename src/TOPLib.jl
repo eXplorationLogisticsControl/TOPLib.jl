@@ -8,6 +8,6 @@ include("multipleshooting/utils.jl")
 include("impulsive_control.jl")
 include("multipleshooting/msfwd.jl")
 
-export ContinuousControlDynamics, ImpulsiveControlDynamics, MultipleForwardShootingProblem, solve
+export ContinuousControlDynamics, ImpulsiveControlDynamics, MultipleShootingForwardProblem, solve
 
 end # module TOPLib

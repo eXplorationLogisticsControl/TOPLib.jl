@@ -89,30 +89,30 @@ end
 function test_constructor_rejects_bad_controls_and_indices()
     dynamics4 = TOPLib.ContinuousControlDynamics(6, 4, double_integrator!, nothing)
     times = [0.0, 1.0]
-    @test_throws ArgumentError TOPLib.MultipleForwardShootingProblem(
+    @test_throws ArgumentError TOPLib.MultipleShootingForwardProblem(
         dynamics4, times, :fuel, zeros(6), zeros(6);
         umax=1.0, u_lb=[-1.0, -1.0, -1.0, 0.0], u_ub=[1.0, 1.0, 1.0, 1.0],
     )
-    @test_throws ArgumentError TOPLib.MultipleForwardShootingProblem(
+    @test_throws ArgumentError TOPLib.MultipleShootingForwardProblem(
         dynamics4, times, :fuel, zeros(6), zeros(6);
         u_lb=[-1.0, -1.0, -1.0, 0.0],
     )
-    @test_throws ArgumentError TOPLib.MultipleForwardShootingProblem(
+    @test_throws ArgumentError TOPLib.MultipleShootingForwardProblem(
         dynamics4, times, :fuel, zeros(6), [0.0], x_final_idx=[1, 2],
     )
-    @test_throws ArgumentError TOPLib.MultipleForwardShootingProblem(
+    @test_throws ArgumentError TOPLib.MultipleShootingForwardProblem(
         dynamics4, times, :fuel, nothing, zeros(6); x_initial_idx=[1],
     )
-    @test_throws ErrorException TOPLib.MultipleForwardShootingProblem(
+    @test_throws ErrorException TOPLib.MultipleShootingForwardProblem(
         dynamics4, times, :energy, zeros(6), zeros(6); umax=1.0,
     )
 
     dynamics5 = TOPLib.ContinuousControlDynamics(6, 5, double_integrator!, nothing)
-    @test_throws ArgumentError TOPLib.MultipleForwardShootingProblem(
+    @test_throws ArgumentError TOPLib.MultipleShootingForwardProblem(
         dynamics5, times, :fuel, zeros(6), zeros(6); umax=1.0,
     )
     dynamics3 = TOPLib.ContinuousControlDynamics(3, 3, double_integrator!, nothing)
-    @test_throws ArgumentError TOPLib.MultipleForwardShootingProblem(
+    @test_throws ArgumentError TOPLib.MultipleShootingForwardProblem(
         dynamics3, times, :fuel, zeros(3), zeros(3);
         u_lb=[-1.0, -1.0, 0.0], u_ub=[1.0, 1.0, 1.0],
     )
