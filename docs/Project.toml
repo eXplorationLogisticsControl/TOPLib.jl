@@ -1,0 +1,9 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
+NLPInterface = "e604ab98-cb68-4d52-a41a-b2fbd5dba595"
+TOPLib = "c416ca4d-1522-4547-b800-d3a11860d931"
+
+[sources]
+TOPLib = {path = ".."}
+NLPInterface = {url = "https://github.com/Yuricst/NLPInterface.jl.git"}
