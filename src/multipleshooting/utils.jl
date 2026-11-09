@@ -20,8 +20,8 @@ end
 
 Column-major stack `z = [vec(x); vec(u)]`.
 
-`x` is `nx × N` (one column per node) and `u` is `nu × (N - 1)` (one column per
-zero-order-hold segment).
+`x` is `nx × N` (one column per node). `u` is `nu × (N - 1)` for a continuous
+segment, or `nu × N` for one impulse per node.
 """
 function stack_variables(x::AbstractMatrix, u::AbstractMatrix)
     return vcat(vec(x), vec(u))
@@ -29,20 +29,29 @@ end
 
 
 """
-    unpack_variables(z, nx, nu, N) -> (x, u)
+    unpack_variables(z, nx, nu, N; n_controls = N - 1) -> (x, u)
 
 Inverse of [`stack_variables`](@ref). The returned arrays view `z`.
+
+`n_controls` is `N - 1` for a continuous segment and `N` for one impulse per node.
 """
-function unpack_variables(z::AbstractVector, nx::Integer, nu::Integer, N::Integer)
+function unpack_variables(
+    z::AbstractVector,
+    nx::Integer,
+    nu::Integer,
+    N::Integer;
+    n_controls::Integer=Int(N) - 1,
+)
     nx_len = Int(nx) * Int(N)
-    u_len = Int(nu) * (Int(N) - 1)
+    Nu = Int(n_controls)
+    u_len = Int(nu) * Nu
     if length(z) != nx_len + u_len
         throw(DimensionMismatch(
-            "z has length $(length(z)), expected $(nx_len + u_len) for nx=$nx, nu=$nu, N=$N",
+            "z has length $(length(z)), expected $(nx_len + u_len) for nx=$nx, nu=$nu, N=$N, n_controls=$Nu",
         ))
     end
     x = reshape(view(z, 1:nx_len), Int(nx), Int(N))
-    u = reshape(view(z, nx_len+1:nx_len+u_len), Int(nu), Int(N) - 1)
+    u = reshape(view(z, nx_len+1:nx_len+u_len), Int(nu), Nu)
     return x, u
 end
 

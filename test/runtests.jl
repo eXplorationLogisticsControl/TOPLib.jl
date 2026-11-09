@@ -16,3 +16,7 @@ end
     include("test_forwardshooting_fitness.jl")
     include("test_forwardshooting_solve.jl")
 end
+
+@testset "Impulsive forward shooting" begin
+    include("test_impulsive_forwardshooting.jl")
+end
