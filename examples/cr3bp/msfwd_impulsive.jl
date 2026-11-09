@@ -96,7 +96,7 @@ prob = MultipleForwardShootingProblem(dynamics, times, :fuel, rv0, rvf; umax = u
 
 result = TOPLib.solve(
     prob;
-    algo = :ipopt,
+    algo = :snopt,
     x0 = x0,
     u0 = u0,
     max_iter = 500,
