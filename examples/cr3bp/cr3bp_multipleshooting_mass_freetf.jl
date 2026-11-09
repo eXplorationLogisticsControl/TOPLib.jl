@@ -13,7 +13,7 @@ Run from the examples environment:
 
 using CairoMakie
 using OrdinaryDiffEq
-using TOPLib: TOPLib, ContinuousControlDynamics, ForwardShootingProblem
+using TOPLib: TOPLib, ContinuousControlDynamics, MultipleForwardShootingProblem
 
 
 struct ControlParams
@@ -104,7 +104,7 @@ u0[1, :] .= 1.0
 u0[5, :] .= tf_guess
 
 dynamics = ContinuousControlDynamics(nx, nu, eom!, params)
-prob = ForwardShootingProblem(
+prob = MultipleForwardShootingProblem(
     dynamics,
     times,
     objective,

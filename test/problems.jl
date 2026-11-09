@@ -32,7 +32,7 @@ function test_problem(;
         umax = 1.0
     end
     bounds = u_lb === nothing ? (; umax) : (; u_lb, u_ub)
-    return TOPLib.ForwardShootingProblem(
+    return TOPLib.MultipleForwardShootingProblem(
         dynamics,
         times,
         objective,

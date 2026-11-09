@@ -14,7 +14,7 @@ Run from this directory so the examples environment is used:
 
 using CairoMakie
 using OrdinaryDiffEq
-using TOPLib: TOPLib, ImpulsiveControlDynamics, ForwardShootingProblem
+using TOPLib: TOPLib, ImpulsiveControlDynamics, MultipleForwardShootingProblem
 
 
 struct ControlParams
@@ -92,7 +92,7 @@ u0 = zeros(nu, N)
 u0[1, :] .= 1.0
 
 dynamics = ImpulsiveControlDynamics(nx, nu, eom!, params)
-prob = ForwardShootingProblem(dynamics, times, :fuel, rv0, rvf; umax = umax)
+prob = MultipleForwardShootingProblem(dynamics, times, :fuel, rv0, rvf; umax = umax)
 
 result = TOPLib.solve(
     prob;

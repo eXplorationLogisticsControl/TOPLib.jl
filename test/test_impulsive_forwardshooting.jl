@@ -65,7 +65,7 @@ function impulsive_problem(;
 )
     dynamics = impulsive_dynamics(; eom! = eom!, jump! = jump!)
     times = collect(range(0.0, tf; length = N))
-    return TOPLib.ForwardShootingProblem(
+    return TOPLib.MultipleForwardShootingProblem(
         dynamics,
         times,
         objective,
@@ -267,7 +267,7 @@ end
 function test_custom_jump_is_used()
     dynamics = TOPLib.ImpulsiveControlDynamics(1, 1, scalar_coast!, nothing; jump! = scalar_jump!)
     times = [0.0, 1.0]
-    prob = TOPLib.ForwardShootingProblem(
+    prob = TOPLib.MultipleForwardShootingProblem(
         dynamics, times, (x, u) -> sum(u), [0.0], [1.5];
         u_lb = [-10.0], u_ub = [10.0], direction_constraint = false,
     )

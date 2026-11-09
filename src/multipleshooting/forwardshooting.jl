@@ -8,7 +8,7 @@ const ShootingDynamics = Union{ContinuousControlDynamics, ImpulsiveControlDynami
 
 
 """
-    ForwardShootingProblem(dynamics, times, objective, x_initial, x_final; kwargs...)
+    MultipleForwardShootingProblem(dynamics, times, objective, x_initial, x_final; kwargs...)
 
 Multiple-shooting problem on a fixed node grid.
 
@@ -36,7 +36,7 @@ column. Each returns a vector of fixed length. `ceq(x, u)` and `cineq(x, u)`
 are called once on the full state and control matrices. Inequalities are
 feasible when every entry is `≤ 0`.
 """
-mutable struct ForwardShootingProblem
+mutable struct MultipleForwardShootingProblem
     dynamics::ShootingDynamics
     times::Vector{Float64}
     objective::Union{Symbol,Function}
@@ -56,7 +56,7 @@ mutable struct ForwardShootingProblem
     ode_reltol::Float64
     ode_abstol::Float64
 
-    function ForwardShootingProblem(
+    function MultipleForwardShootingProblem(
         dynamics::ShootingDynamics,
         times::AbstractVector,
         objective::Union{Symbol,Function},
@@ -193,7 +193,7 @@ end
 Flattened boundary equalities. A full target contributes `x - target`.
 An index vector contributes `x[idx] - target`. A missing endpoint is omitted.
 """
-function get_boundary_conditions(prob::ForwardShootingProblem, x1, xN)
+function get_boundary_conditions(prob::MultipleForwardShootingProblem, x1, xN)
     T = promote_type(eltype(x1), eltype(xN))
     ceq = T[]
     _append_boundary!(ceq, x1, prob.x_initial, prob.x_initial_idx)
@@ -309,7 +309,7 @@ Equalities are dynamics defects, then boundary conditions, then `ceq_path`,
 then `ceq`. Inequalities are the direction constraints, then `cineq_path`,
 then `cineq`.
 """
-function constraint_counts(prob::ForwardShootingProblem, x::AbstractMatrix, u::AbstractMatrix)
+function constraint_counts(prob::MultipleForwardShootingProblem, x::AbstractMatrix, u::AbstractMatrix)
     nx = prob.dynamics.nx
     nseg = prob.N - 1
     n_ctrl = size(u, 2)
@@ -337,7 +337,7 @@ end
 `direction_constraint` is false. For impulsive dynamics the final boundary
 uses the post-impulse state; the initial boundary uses the pre-impulse state.
 """
-function get_fitness(prob::ForwardShootingProblem)
+function get_fitness(prob::MultipleForwardShootingProblem)
     nx = prob.dynamics.nx
     nu = prob.dynamics.nu
     N = prob.N
@@ -395,7 +395,7 @@ Variable bounds on the stacked decision vector.
 Every state component uses `x_lb` / `x_ub` (scalars apply to all components).
 Each control column is boxed by `u_lb` / `u_ub`.
 """
-function decision_bounds(prob::ForwardShootingProblem, x_lb, x_ub)
+function decision_bounds(prob::MultipleForwardShootingProblem, x_lb, x_ub)
     nx = prob.dynamics.nx
     nu = prob.dynamics.nu
     N = prob.N
@@ -426,7 +426,7 @@ end
 """
     solve(prob; algo=:ipopt, x0, u0, x_lb=-10, x_ub=10, kwargs...)
 
-Solve a [`ForwardShootingProblem`](@ref) with Ipopt (`:ipopt`) or SNOPT (`:snopt`).
+Solve a [`MultipleForwardShootingProblem`](@ref) with Ipopt (`:ipopt`) or SNOPT (`:snopt`).
 
 `x0` is `nx × N`. `u0` is `nu × (N - 1)` for continuous dynamics and `nu × N`
 for impulsive dynamics. Remaining keywords are solver options (`tol`,
@@ -435,7 +435,7 @@ for impulsive dynamics. Remaining keywords are solver options (`tol`,
 Returns the named tuple `(x, u, objective, status)`.
 """
 function solve(
-    prob::ForwardShootingProblem;
+    prob::MultipleForwardShootingProblem;
     algo::Symbol=:ipopt,
     x0::AbstractMatrix,
     u0::AbstractMatrix,
