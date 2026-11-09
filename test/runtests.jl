@@ -10,13 +10,13 @@ include(joinpath(@__DIR__, "problems.jl"))
 end
 
 @testset "Forward shooting" begin
-    include("test_forwardshooting_problem.jl")
-    include("test_forwardshooting_objective.jl")
-    include("test_forwardshooting_defects.jl")
-    include("test_forwardshooting_fitness.jl")
-    include("test_forwardshooting_solve.jl")
+    include("test_msfwd_problem.jl")
+    include("test_msfwd_objective.jl")
+    include("test_msfwd_defects.jl")
+    include("test_msfwd_fitness.jl")
+    include("test_msfwd_solve.jl")
 end
 
 @testset "Impulsive forward shooting" begin
-    include("test_impulsive_forwardshooting.jl")
+    include("test_impulsive_msfwd.jl")
 end
