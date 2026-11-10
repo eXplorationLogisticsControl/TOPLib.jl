@@ -76,7 +76,8 @@ Defects for one impulse per node.
 `u` is `nu × N`. Segment `k` jumps from `x[:, k]` with `u[:, k]`, then coasts
 to `times[k + 1]` with a zero control. The defect column is
 `x[:, k + 1] - x(t_{k + 1})`. Column `N` is the terminal burn and is not
-integrated.
+integrated. Jumps run on the calling thread. The coasts then propagate together
+as one threaded ensemble. `eom!` may write only `dx`.
 """
 function shooting_defects(
     dynamics::ImpulsiveControlDynamics,
@@ -96,33 +97,29 @@ function shooting_defects(
         throw(DimensionMismatch("u must be $(dynamics.nu) × $(N), got $(size(u))"))
     end
 
+    nseg = N - 1
     T = promote_type(eltype(x), eltype(u))
-    defects = zeros(T, nx, N - 1)
-    for k in 1:(N - 1)
-        # Copies: the jump and the ODE solver must not alias the decision vector.
-        xk = apply_impulsive_jump(dynamics, view(x, :, k), view(u, :, k))
+    defects = zeros(T, nx, nseg)
+    nseg == 0 && return defects
+
+    # Jumps stay on this thread. Each coast owns its post-jump state and a zero control.
+    u0s = map(k -> apply_impulsive_jump(dynamics, view(x, :, k), view(u, :, k)), 1:nseg)
+    tspans = map(k -> (times[k], times[k + 1]), 1:nseg)
+    ps = map(u0s) do xk
         uk = fill(zero(eltype(xk)), dynamics.nu)
-        ode_problem = OrdinaryDiffEq.ODEProblem(
-            dynamics.eom!,
-            xk,
-            (times[k], times[k + 1]),
-            dynamics_input(dynamics.params, uk),
-        )
-        sol = OrdinaryDiffEq.solve(
-            ode_problem,
-            ode_method;
-            reltol = ode_reltol,
-            abstol = ode_abstol,
-            save_everystep = false,
-            verbose = ode_verbose(),
-        )
-        t_end = sol.t[end]
-        reached = OrdinaryDiffEq.successful_retcode(sol.retcode) &&
-            abs(t_end - times[k + 1]) <= 1e-8 * (1 + abs(times[k + 1]))
-        if !reached
-            error("ODE integration failed on segment $k with retcode $(sol.retcode) at t=$t_end")
-        end
-        defects[:, k] = x[:, k + 1] .- sol.u[end][1:nx]
+        return dynamics_input(dynamics.params, uk)
+    end
+    ends = propagate_segments(
+        dynamics.eom!,
+        u0s,
+        tspans,
+        ps;
+        ode_method = ode_method,
+        ode_reltol = ode_reltol,
+        ode_abstol = ode_abstol,
+    )
+    for k in 1:nseg
+        defects[:, k] = x[:, k + 1] .- ends[k][1:nx]
     end
     return defects
 end
