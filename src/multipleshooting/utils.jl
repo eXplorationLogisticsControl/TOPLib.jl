@@ -57,9 +57,11 @@ end
 
 
 """
-    propagate_segments(eom!, u0s, tspans, ps; ode_method, ode_reltol, ode_abstol)
+    propagate_segments(eom!, u0s, tspans, ps; ode_method, ode_reltol, ode_abstol, ensemble_method)
 
-Integrate independent segments together as one threaded ensemble.
+Integrate independent segments together as one ensemble.
+
+`ensemble_method` is the ensemble scheduler, for example `EnsembleThreads()`.
 
 `u0s[k]`, `tspans[k]`, and `ps[k]` belong to segment `k`. Each initial state and
 each parameter's control vector is owned by that trajectory. `eom!` may write
@@ -76,6 +78,7 @@ function propagate_segments(
     ode_method,
     ode_reltol::Real,
     ode_abstol::Real,
+    ensemble_method,
 )
     nseg = length(u0s)
     if length(tspans) != nseg || length(ps) != nseg
@@ -103,7 +106,7 @@ function propagate_segments(
     sim = OrdinaryDiffEq.solve(
         ensemble,
         ode_method,
-        OrdinaryDiffEq.SciMLBase.EnsembleThreads();
+        ensemble_method;
         trajectories = nseg,
         reltol=ode_reltol,
         abstol=ode_abstol,
@@ -127,15 +130,15 @@ end
 
 
 """
-    shooting_defects(dynamics, times, x, u; ode_method, ode_reltol, ode_abstol)
+    shooting_defects(dynamics, times, x, u; ode_method, ode_reltol, ode_abstol, ensemble_method)
 
 Multiple-shooting defects for zero-order-hold controls.
 
 Segment `k` is integrated from `x[:, k]` over `[times[k], times[k+1]]` with the
 constant control `u[:, k]`. The defect column is `x[:, k+1] - x(t_{k+1})`.
-Segments propagate together as one threaded ensemble. `eom!` may write only
-`dx`. Controls are copied before the integrator sees them, so an in-place
-solver cannot alias the decision vector.
+Segments propagate together as one ensemble, scheduled by `ensemble_method`.
+`eom!` may write only `dx`. Controls are copied before the integrator sees
+them, so an in-place solver cannot alias the decision vector.
 """
 function shooting_defects(
     dynamics::ContinuousControlDynamics,
@@ -145,6 +148,7 @@ function shooting_defects(
     ode_method,
     ode_reltol::Real,
     ode_abstol::Real,
+    ensemble_method,
 )
     nx = dynamics.nx
     N = length(times)
@@ -172,6 +176,7 @@ function shooting_defects(
         ode_method = ode_method,
         ode_reltol = ode_reltol,
         ode_abstol = ode_abstol,
+        ensemble_method = ensemble_method,
     )
     for k in 1:nseg
         defects[:, k] = x[:, k + 1] .- ends[k][1:nx]

@@ -77,7 +77,7 @@ Defects for one impulse per node.
 to `times[k + 1]` with a zero control. The defect column is
 `x[:, k + 1] - x(t_{k + 1})`. Column `N` is the terminal burn and is not
 integrated. Jumps run on the calling thread. The coasts then propagate together
-as one threaded ensemble. `eom!` may write only `dx`.
+as one ensemble, scheduled by `ensemble_method`. `eom!` may write only `dx`.
 """
 function shooting_defects(
     dynamics::ImpulsiveControlDynamics,
@@ -87,6 +87,7 @@ function shooting_defects(
     ode_method,
     ode_reltol::Real,
     ode_abstol::Real,
+    ensemble_method,
 )
     nx = dynamics.nx
     N = length(times)
@@ -117,6 +118,7 @@ function shooting_defects(
         ode_method = ode_method,
         ode_reltol = ode_reltol,
         ode_abstol = ode_abstol,
+        ensemble_method = ensemble_method,
     )
     for k in 1:nseg
         defects[:, k] = x[:, k + 1] .- ends[k][1:nx]

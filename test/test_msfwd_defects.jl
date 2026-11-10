@@ -26,8 +26,23 @@ function test_dynamics_defects()
         ode_method=prob.ode_method,
         ode_reltol=prob.ode_reltol,
         ode_abstol=prob.ode_abstol,
+        ensemble_method=prob.ensemble_method,
     )
     @test defects ≈ zeros(6, 1) atol=1e-8
+
+    serial = TOPLib.OrdinaryDiffEq.SciMLBase.EnsembleSerial()
+    prob_serial = test_problem(;
+        N=2, tf=1.0, x_initial=nothing, x_final=nothing, ensemble_method=serial,
+    )
+    @test prob_serial.ensemble_method === serial
+    defects_serial = TOPLib.shooting_defects(
+        prob_serial.dynamics, prob_serial.times, x, u;
+        ode_method=prob_serial.ode_method,
+        ode_reltol=prob_serial.ode_reltol,
+        ode_abstol=prob_serial.ode_abstol,
+        ensemble_method=prob_serial.ensemble_method,
+    )
+    @test defects_serial ≈ defects atol=1e-8
 
     x_bad = copy(x)
     x_bad[1, 2] += 0.1
@@ -36,6 +51,7 @@ function test_dynamics_defects()
         ode_method=prob.ode_method,
         ode_reltol=prob.ode_reltol,
         ode_abstol=prob.ode_abstol,
+        ensemble_method=prob.ensemble_method,
     )
     @test defects_bad[:, 1] ≈ [0.1, 0.0, 0.0, 0.0, 0.0, 0.0] atol=1e-8
 
@@ -46,6 +62,7 @@ function test_dynamics_defects()
         ode_method=prob.ode_method,
         ode_reltol=prob.ode_reltol,
         ode_abstol=prob.ode_abstol,
+        ensemble_method=prob.ensemble_method,
     ))
     J = ForwardDiff.jacobian(defects_vec, z)
     @test all(isfinite, J)
@@ -87,6 +104,7 @@ function test_unequal_segment_defects()
         ode_method=prob.ode_method,
         ode_reltol=prob.ode_reltol,
         ode_abstol=prob.ode_abstol,
+        ensemble_method=prob.ensemble_method,
     )
     @test size(defects) == (6, 3)
     @test defects ≈ zeros(6, 3) atol=1e-8
@@ -99,6 +117,7 @@ function test_unequal_segment_defects()
         ode_method=prob.ode_method,
         ode_reltol=prob.ode_reltol,
         ode_abstol=prob.ode_abstol,
+        ensemble_method=prob.ensemble_method,
     )
     @test defects_bad[:, 1] ≈ [0.1, 0.0, 0.0, 0.0, 0.0, 0.0] atol=1e-8
     @test defects_bad[:, 2] ≈ [-0.1, 0.0, 0.0, 0.0, 0.0, 0.0] atol=1e-8

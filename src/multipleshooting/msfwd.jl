@@ -35,6 +35,9 @@ With `direction_constraint` (the default), every control column satisfies
 column. Each returns a vector of fixed length. `ceq(x, u)` and `cineq(x, u)`
 are called once on the full state and control matrices. Inequalities are
 feasible when every entry is `≤ 0`.
+
+`ensemble_method` schedules the segment integrations. The default is
+`EnsembleThreads`.
 """
 mutable struct MultipleShootingForwardProblem
     dynamics::ShootingDynamics
@@ -55,6 +58,7 @@ mutable struct MultipleShootingForwardProblem
     ode_method
     ode_reltol::Float64
     ode_abstol::Float64
+    ensemble_method
 
     function MultipleShootingForwardProblem(
         dynamics::ShootingDynamics,
@@ -75,6 +79,7 @@ mutable struct MultipleShootingForwardProblem
         ode_method=OrdinaryDiffEq.Tsit5(),
         ode_reltol::Real=1e-12,
         ode_abstol::Real=1e-12,
+        ensemble_method=OrdinaryDiffEq.SciMLBase.EnsembleThreads(),
     )
         if objective isa Symbol && objective != :fuel
             error("Objective type $objective not supported")
@@ -115,6 +120,7 @@ mutable struct MultipleShootingForwardProblem
             ode_method,
             Float64(ode_reltol),
             Float64(ode_abstol),
+            ensemble_method,
         )
     end
 end
@@ -354,6 +360,7 @@ function get_fitness(prob::MultipleShootingForwardProblem)
             ode_method=prob.ode_method,
             ode_reltol=prob.ode_reltol,
             ode_abstol=prob.ode_abstol,
+            ensemble_method=prob.ensemble_method,
         )
         xN = terminal_state(prob.dynamics, x[:, N], u)
         ceq = vcat(vec(defects), get_boundary_conditions(prob, x[:, 1], xN))

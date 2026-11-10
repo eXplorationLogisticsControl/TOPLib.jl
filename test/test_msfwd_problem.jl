@@ -16,6 +16,7 @@ function test_problem_size_and_bounds()
     @test prob.N == 4
     @test prob.ode_reltol == 1e-12
     @test prob.ode_abstol == 1e-12
+    @test prob.ensemble_method isa TOPLib.OrdinaryDiffEq.SciMLBase.EnsembleThreads
     z_lb, z_ub = TOPLib.decision_bounds(prob, -10.0, 10.0)
     @test length(z_lb) == 6 * 4 + 4 * 3
     @test all(z_lb[1:6] .== -10.0)

@@ -9,7 +9,7 @@ departure and arrival states fixed, cost `sum(throttle)`.
 
 Run from this directory so the examples environment is used:
 
-    julia --project=.. cr3bp_multipleshooting_impulsive.jl
+    julia -t auto --project=.. cr3bp_multipleshooting_impulsive.jl
 """
 
 using CairoMakie
@@ -131,23 +131,33 @@ defects = TOPLib.shooting_defects(
     ode_method = prob.ode_method,
     ode_reltol = prob.ode_reltol,
     ode_abstol = prob.ode_abstol,
+    ensemble_method = prob.ensemble_method,
 )
 println("status       : ", result.status)
 println("objective    : ", result.objective)
 println("max |defect| : ", maximum(abs, defects))
 
-# Jump, then coast with zero thrust, so the plotted arcs are the integrated segments.
-sols_opt = map(1:(N - 1)) do k
+# Jump, then coast with zero thrust. The arcs propagate together as one threaded ensemble.
+nseg = N - 1
+u0s = map(1:nseg) do k
     xk = copy(result.x[:, k])
     xk[4:6] .+= result.u[4, k] .* result.u[1:3, k]
-    solve(
-        ODEProblem(eom!, xk, (times[k], times[k + 1]), (; params, u = zeros(nu))),
-        prob.ode_method;
-        reltol = prob.ode_reltol,
-        abstol = prob.ode_abstol,
-        verbose = DEVerbosity(SciMLLogging.None()),
-    )
+    return xk
 end
+tspans = [(times[k], times[k + 1]) for k in 1:nseg]
+ps = [(; params, u = zeros(nu)) for _ in 1:nseg]
+template = ODEProblem(eom!, u0s[1], tspans[1], ps[1])
+prob_func = (odeprob, ctx) -> remake(odeprob; u0 = u0s[ctx.sim_id], tspan = tspans[ctx.sim_id], p = ps[ctx.sim_id])
+ensemble = EnsembleProblem(template; prob_func, safetycopy = false)
+sols_opt = solve(
+    ensemble,
+    prob.ode_method,
+    SciMLBase.EnsembleThreads();
+    trajectories = nseg,
+    reltol = prob.ode_reltol,
+    abstol = prob.ode_abstol,
+    verbose = DEVerbosity(SciMLLogging.None()),
+).u
 
 fig = Figure(size = (1000, 700))
 ax3d = Axis3(fig[1, 1]; aspect = :data)
