@@ -12,7 +12,7 @@
 # Run it from the repository root with the examples project:
 #
 # ```
-# julia --project=examples docs/src/examples/fwdbck_cr3bp.jl
+# julia -t auto --project=examples docs/src/examples/fwdbck_cr3bp.jl
 # ```
 
 using CairoMakie
@@ -205,25 +205,27 @@ println("max |mismatch|: ", maximum(abs, ceq[1:nx]))
 
 # ## Trajectory
 #
-# `result.x` is already the propagated node matrix. Integrating each segment
-# again fills in the continuous arc between those nodes. Thrusting segments are
-# red and coast segments are black. The blue and green curves are the departure
-# and arrival orbits.
+# `result.x` is already the propagated node matrix. Propagate the segments
+# again, together on Julia threads, to fill in the continuous arc between those
+# nodes. Thrusting segments are red and coast segments are black. The blue and
+# green curves are the departure and arrival orbits.
 
-sols_opt = map(1:(N - 1)) do k
-    solve(
-        ODEProblem(
-            eom!,
-            result.x[:, k],
-            (times[k], times[k + 1]),
-            (; params, u=result.u[:, k]),
-        ),
-        prob.ode_method;
-        reltol=prob.ode_reltol,
-        abstol=prob.ode_abstol,
-        verbose=DEVerbosity(SciMLLogging.None()),
-    )
-end
+nseg = N - 1
+u0s = [copy(result.x[:, k]) for k in 1:nseg]
+tspans = [(times[k], times[k + 1]) for k in 1:nseg]
+ps = [(; params, u=copy(result.u[:, k])) for k in 1:nseg]
+template = ODEProblem(eom!, u0s[1], tspans[1], ps[1])
+prob_func = (odeprob, ctx) -> remake(odeprob; u0=u0s[ctx.sim_id], tspan=tspans[ctx.sim_id], p=ps[ctx.sim_id])
+ensemble = EnsembleProblem(template; prob_func, safetycopy=false)
+sols_opt = solve(
+    ensemble,
+    prob.ode_method,
+    SciMLBase.EnsembleThreads();
+    trajectories=nseg,
+    reltol=prob.ode_reltol,
+    abstol=prob.ode_abstol,
+    verbose=DEVerbosity(SciMLLogging.None()),
+).u
 
 fig = Figure(size=(1000, 800))
 ax3d = Axis3(fig[1, 1]; aspect=:data)

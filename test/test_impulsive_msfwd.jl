@@ -93,6 +93,7 @@ function test_jump_then_coast_defects()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
     @test defects ≈ zeros(6, 1) atol = 1e-8
 
@@ -104,6 +105,7 @@ function test_jump_then_coast_defects()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
     @test defects_terminal ≈ defects atol = 1e-8
 
@@ -114,6 +116,7 @@ function test_jump_then_coast_defects()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
     @test defects_bad[:, 1] ≈ [0.1, 0.0, 0.0, 0.0, 0.0, 0.0] atol = 1e-8
 
@@ -122,6 +125,7 @@ function test_jump_then_coast_defects()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
 
     z = TOPLib.stack_variables(x, u)
@@ -131,6 +135,7 @@ function test_jump_then_coast_defects()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     ))
     J = ForwardDiff.jacobian(defects_vec, z)
     @test all(isfinite, J)
@@ -162,6 +167,7 @@ function test_coast_does_not_see_the_burn()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
     @test defects ≈ zeros(6, 1) atol = 1e-8
 end
@@ -181,6 +187,7 @@ function test_jump_does_not_mutate_the_decision()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
     @test x == x_before
     @test u == u_before
@@ -278,6 +285,7 @@ function test_custom_jump_is_used()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
     @test defects ≈ zeros(1, 1) atol = 1e-8
     _, ceq, cineq = TOPLib.get_fitness(prob)(TOPLib.stack_variables(x, u))
@@ -306,6 +314,7 @@ function test_solve_rest_to_rest()
         ode_method = prob.ode_method,
         ode_reltol = prob.ode_reltol,
         ode_abstol = prob.ode_abstol,
+        ensemble_method = prob.ensemble_method,
     )
     @test defects ≈ zeros(6, 1) atol = 1e-6
     x_post = copy(result.x[:, 2])

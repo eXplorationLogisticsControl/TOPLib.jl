@@ -13,7 +13,7 @@ states meet at the cut.
 
 Run from this directory:
 
-    julia --project=.. fwdback_continuous_mass_freetf.jl
+    julia -t auto --project=.. fwdback_continuous_mass_freetf.jl
 """
 
 using CairoMakie
@@ -156,20 +156,23 @@ println("dilation      : ", result.u[5, 1])
 println("max |Δs|      : ", maximum(abs, diff(result.u[5, :])))
 println("max |mismatch|: ", maximum(abs, ceq[1:nx]))
 
-sols_opt = map(1:(N - 1)) do k
-    solve(
-        ODEProblem(
-            eom!,
-            result.x[:, k],
-            (times[k], times[k + 1]),
-            (; params, u=result.u[:, k]),
-        ),
-        prob.ode_method;
-        reltol=prob.ode_reltol,
-        abstol=prob.ode_abstol,
-        verbose=DEVerbosity(SciMLLogging.None()),
-    )
-end
+# Propagate the segments together so the plot follows the continuous arcs.
+nseg = N - 1
+u0s = [copy(result.x[:, k]) for k in 1:nseg]
+tspans = [(times[k], times[k + 1]) for k in 1:nseg]
+ps = [(; params, u=copy(result.u[:, k])) for k in 1:nseg]
+template = ODEProblem(eom!, u0s[1], tspans[1], ps[1])
+prob_func = (odeprob, ctx) -> remake(odeprob; u0=u0s[ctx.sim_id], tspan=tspans[ctx.sim_id], p=ps[ctx.sim_id])
+ensemble = EnsembleProblem(template; prob_func, safetycopy=false)
+sols_opt = solve(
+    ensemble,
+    prob.ode_method,
+    SciMLBase.EnsembleThreads();
+    trajectories=nseg,
+    reltol=prob.ode_reltol,
+    abstol=prob.ode_abstol,
+    verbose=DEVerbosity(SciMLLogging.None()),
+).u
 
 fig = Figure(size=(1000, 800))
 ax3d = Axis3(fig[1, 1]; aspect=:data)

@@ -25,6 +25,7 @@ function test_problem(;
     cineq_path=nothing,
     ceq=nothing,
     cineq=nothing,
+    ensemble_method=nothing,
 )
     dynamics = TOPLib.ContinuousControlDynamics(nx, nu, double_integrator!, nothing)
     times = collect(range(0.0, tf; length=N))
@@ -32,6 +33,7 @@ function test_problem(;
         umax = 1.0
     end
     bounds = u_lb === nothing ? (; umax) : (; u_lb, u_ub)
+    ensemble = ensemble_method === nothing ? (;) : (; ensemble_method)
     return TOPLib.MultipleShootingForwardProblem(
         dynamics,
         times,
@@ -39,6 +41,7 @@ function test_problem(;
         x_initial,
         x_final;
         bounds...,
+        ensemble...,
         x_initial_idx=x_initial_idx,
         x_final_idx=x_final_idx,
         direction_constraint=direction_constraint,

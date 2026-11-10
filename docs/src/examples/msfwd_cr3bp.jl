@@ -10,7 +10,7 @@
 # Run it from the repository root with the examples project:
 #
 # ```
-# julia --project=examples docs/src/examples/msfwd_cr3bp.jl
+# julia -t auto --project=examples docs/src/examples/msfwd_cr3bp.jl
 # ```
 
 using CairoMakie
@@ -180,8 +180,8 @@ x_ub = [10.0, 10.0, 10.0, 10.0, 10.0, 10.0, 1.5, 10.0]
 
 # ## Solve
 #
-# `x0` is `8 × 30` and `u0` is `5 × 29`. The defect check integrates each
-# segment once more and compares its end state with the next node.
+# `x0` is `8 × 30` and `u0` is `5 × 29`. The defect check propagates the
+# segments together and compares each end state with the next node.
 
 solver = :ipopt
 options = Dict(
@@ -206,6 +206,7 @@ defects = TOPLib.shooting_defects(
     ode_method=prob.ode_method,
     ode_reltol=prob.ode_reltol,
     ode_abstol=prob.ode_abstol,
+    ensemble_method=prob.ensemble_method,
 )
 println("status       : ", result.status)
 println("objective    : ", result.objective)
@@ -217,24 +218,26 @@ println("max |defect| : ", maximum(abs, defects))
 
 # ## Trajectory
 #
-# Integrate each zero-order-hold segment so the plot follows the continuous
-# arc. Thrusting segments are red and coast segments are black. The blue and
-# green curves are the departure and arrival orbits.
+# Propagate the zero-order-hold segments together on Julia threads so the plot
+# follows the continuous arc. Thrusting segments are red and coast segments are
+# black. The blue and green curves are the departure and arrival orbits.
 
-sols_opt = map(1:(N - 1)) do k
-    solve(
-        ODEProblem(
-            eom!,
-            result.x[:, k],
-            (times[k], times[k + 1]),
-            (; params, u=result.u[:, k]),
-        ),
-        prob.ode_method;
-        reltol=prob.ode_reltol,
-        abstol=prob.ode_abstol,
-        verbose=DEVerbosity(SciMLLogging.None()),
-    )
-end
+nseg = N - 1
+u0s = [copy(result.x[:, k]) for k in 1:nseg]
+tspans = [(times[k], times[k + 1]) for k in 1:nseg]
+ps = [(; params, u=copy(result.u[:, k])) for k in 1:nseg]
+template = ODEProblem(eom!, u0s[1], tspans[1], ps[1])
+prob_func = (odeprob, ctx) -> remake(odeprob; u0=u0s[ctx.sim_id], tspan=tspans[ctx.sim_id], p=ps[ctx.sim_id])
+ensemble = EnsembleProblem(template; prob_func, safetycopy=false)
+sols_opt = solve(
+    ensemble,
+    prob.ode_method,
+    SciMLBase.EnsembleThreads();
+    trajectories=nseg,
+    reltol=prob.ode_reltol,
+    abstol=prob.ode_abstol,
+    verbose=DEVerbosity(SciMLLogging.None()),
+).u
 
 fig = Figure(size=(1000, 800))
 ax3d = Axis3(fig[1, 1]; aspect=:data)
