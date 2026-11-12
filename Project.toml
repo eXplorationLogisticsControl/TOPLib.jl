@@ -10,6 +10,7 @@ OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
 
 [compat]
 ForwardDiff = "0.10, 1"
+NLPInterface = "0.1.0"
 OrdinaryDiffEq = "^6.0.0, 7"
 
 [extras]
