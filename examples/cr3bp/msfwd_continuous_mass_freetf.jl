@@ -138,7 +138,6 @@ else
     error("Invalid solver: $solver")
 end
 
-
 result = TOPLib.solve(
     prob;
     algo=solver,
