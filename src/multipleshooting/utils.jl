@@ -89,10 +89,12 @@ function propagate_segments(
     nseg == 0 && return eltype(u0s)[]
 
     template = OrdinaryDiffEq.ODEProblem(eom!, u0s[1], tspans[1], ps[1])
-    prob_func = function (prob, ctx)
-        k = ctx.sim_id
+    # SciMLBase 3 passes an ensemble context; SciMLBase 2 passes `(prob, i, repeat)`.
+    function prob_func(prob, ctx)
+        k = ctx isa Integer ? ctx : ctx.sim_id
         return OrdinaryDiffEq.remake(prob; u0 = u0s[k], tspan = tspans[k], p = ps[k])
     end
+    prob_func(prob, i::Integer, ::Any) = prob_func(prob, i)
     # `(end state, t, retcode)` so the success check can run after the ensemble.
     output_func = function (sol, ctx)
         return ((copy(sol.u[end]), sol.t[end], sol.retcode), false)
@@ -118,7 +120,10 @@ function propagate_segments(
     for k in 1:nseg
         u_end, t_end, retcode = sim.u[k]
         t_target = tspans[k][2]
-        reached = OrdinaryDiffEq.successful_retcode(retcode) &&
+        # OrdinaryDiffEq 7 re-exports this; on v6 it lives in SciMLBase.
+        successful_retcode = isdefined(OrdinaryDiffEq, :successful_retcode) ?
+            OrdinaryDiffEq.successful_retcode : OrdinaryDiffEq.SciMLBase.successful_retcode
+        reached = successful_retcode(retcode) &&
             abs(t_end - t_target) <= 1e-8 * (1 + abs(t_target))
         if !reached
             error("ODE integration failed on segment $k with retcode $(retcode) at t=$t_end")
